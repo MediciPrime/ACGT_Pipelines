@@ -1,0 +1,24 @@
+###########################################################
+#### Config YAML #################
+###########################################################
+
+# Particular Barcodes for each sample
+samples:
+  B36:
+    barcode: 'CAGATC'
+  Cp3:
+    barcode: 'TGACCA'
+  C136:
+    barcode: 'CGATGT'
+  C17:
+    barcode: 'CTTGTA'
+
+references:
+  covd_light:
+    saindex: '4.046379'
+  covd_heavy:
+    saindex: '4.450811'
+  vrc01_light:
+    saindex: '3.733803'
+  vrc01_heavy:
+    saindex: '4.239385'

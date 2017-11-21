@@ -1,0 +1,170 @@
+configfile:  "config.yaml"
+
+targets = []
+for reference in config['references']:
+    for sample in config['samples']:
+        targets.extend(
+            expand(
+                'data/consensus/{reference}/{sample}/{sample}_consensus.fasta',
+                sample=sample,
+                reference=reference
+            )
+        )
+        targets.extend(
+            expand(
+                'data/coverage/{reference}/{sample}/{sample}',
+                sample=sample,
+                reference=reference
+            )
+        )
+
+rule all:
+    input:
+        targets
+
+rule cutadapt:
+    input:
+        r1 = 'data/raw_reads/{sample}_R1.fastq.gz',
+        r2 = 'data/raw_reads/{sample}_R2.fastq.gz'
+    output:
+        r1 = 'data/trimmed_reads/{sample}_R1_trimmed.fq',
+        r2 = 'data/trimmed_reads/{sample}_R2_trimmed.fq'
+    params:
+        five_prime = 'GTTCAGAGTTCTACAGTCCGACGATC',
+        three_prime = 'TGGAATTCTCGGGTGCCAAGG'
+    shell:
+        'cutadapt -a {params.five_prime} -A {params.three_prime} '
+        '-q 20 -m 25 -o {output.r1} -p {output.r2} '
+        '{input.r1} {input.r2}'
+
+def get_saindex(wc):
+    saindex = config['references'][wc.reference]['saindex']
+    return saindex
+        
+rule star_index:
+    input:
+        ref_folder = 'data/reference/{reference}',
+        ref_fasta = 'data/reference/{reference}/{reference}.fasta'
+    output:
+        'data/reference/{reference}/SAindex'
+    params:
+        saindex = get_saindex
+    threads: 10
+    shell:
+        'STAR --runThreadN {threads} --runMode genomeGenerate '
+        '--genomeDir {input.ref_folder} --genomeFastaFiles {input.ref_fasta} '
+        '--genomeSAindexNbases {params.saindex}'
+
+rule star_align:
+    input:
+        genomeDir = 'data/reference/{reference}',
+        SA_index = 'data/reference/{reference}/SAindex',
+        r1 = 'data/trimmed_reads/{sample}_R1_trimmed.fq',
+        r2 = 'data/trimmed_reads/{sample}_R2_trimmed.fq'
+    output:
+        'data/sam_files/{reference}/{sample}/Aligned.out.sam'
+    params:
+        sam_prefix = 'data/sam_files/{reference}/{sample}/'
+    threads: 20
+    shell:
+        'STAR --runThreadN {threads} --genomeDir {input.genomeDir} '
+        '--readFilesIn {input.r1} {input.r2} --twopassMode Basic '
+        '--outFileNamePrefix {params.sam_prefix}'
+
+def get_bar(wc):
+    barcode = config['samples'][wc.sample]['barcode']
+    return barcode
+        
+rule star_picard_rg:
+    input:
+        sam_file = 'data/sam_files/{reference}/{sample}/Aligned.out.sam'
+    output:
+        'data/bam_files/{reference}/{sample}/{sample}_rg_sorted.bam'
+    params:
+        barcode=get_bar
+    shell:
+        'picard AddOrReplaceReadGroups I={input.sam_file} O={output} '
+        'SORT_ORDER=coordinate RGLB={sample} RGPL=illumina RGPU={params.barcode} '
+        'RGSM={wildcards.sample}'
+        
+rule star_picard_md:
+    input:
+        bam_sorted = 'data/bam_files/{reference}/{sample}/{sample}_rg_sorted.bam'
+    output:
+        bam_dedup = 'data/bam_files/{reference}/{sample}/{sample}_rg_dedupped.bam',
+        output_met = 'data/bam_files/{reference}/{sample}/{sample}_output.metrics'
+    shell:
+        'picard MarkDuplicates I={input.bam_sorted} O={output.bam_dedup} '
+        'CREATE_INDEX=true VALIDATION_STRINGENCY=SILENT M={output.output_met}'
+
+rule fasta_index:
+    input:
+        ref = 'data/reference/{reference}/{reference}.fasta'
+    output:
+        ref_index = 'data/reference/{reference}/{reference}.fasta.fai'
+    shell:
+        'samtools faidx {input.ref}'
+
+rule fasta_dictionary:
+    input:
+        ref = 'data/reference/{reference}/{reference}.fasta'
+    output:
+        ref_dict = 'data/reference/{reference}/{reference}.dict'
+    shell:
+        'picard CreateSequenceDictionary R={input.ref}'
+        
+rule gatk_splitN:
+    input:
+        ref = 'data/reference/{reference}/{reference}.fasta',
+        ref_index = 'data/reference/{reference}/{reference}.fasta.fai',
+        ref_dict = 'data/reference/{reference}/{reference}.dict',
+        bam_dedup = 'data/bam_files/{reference}/{sample}/{sample}_rg_dedupped.bam'
+    output:
+        'data/bam_files/{reference}/{sample}/{sample}_rg_dedupped_split.bam'
+    shell:
+        'java -jar GenomeAnalysisTK.jar -T SplitNCigarReads -R {input.ref} '
+        '-I {input.bam_dedup} -o {output} -rf ReassignOneMappingQuality '
+        '-RMQF 255 -RMQT 60 -U ALLOW_N_CIGAR_READS'
+
+rule gatk_haplotype:
+    input:
+        ref = 'data/reference/{reference}/{reference}.fasta',
+        bam_split = 'data/bam_files/{reference}/{sample}/{sample}_rg_dedupped_split.bam'
+    output:
+        'data/variants/{reference}/{sample}/{sample}.vcf'
+    shell:
+        'java -jar GenomeAnalysisTK.jar -T HaplotypeCaller -R {input.ref} '
+        '-I {input.bam_split} -dontUseSoftClippedBases -stand_call_conf 20.0 '
+        '-o {output}'
+
+rule gatk_filter:
+    input:
+        ref = 'data/reference/{reference}/{reference}.fasta',
+        raw_vcf = 'data/variants/{reference}/{sample}/{sample}.vcf'
+    output:
+        'data/variants/{reference}/{sample}/{sample}_filtered.vcf'
+    shell:
+        'java -jar GenomeAnalysisTK.jar -T VariantFiltration -R {input.ref} '
+        '-V {input.raw_vcf} -window 35 -cluster 3 -filterName FS '
+        '-filter "FS > 30.0" -filterName QD -filter "QD < 2.0" -o {output}'
+
+rule gatk_consensus:
+    input:
+        filtered_vcf = 'data/variants/{reference}/{sample}/{sample}_filtered.vcf',
+        reference = 'data/reference/{reference}/{reference}.fasta'
+    output:
+        'data/consensus/{reference}/{sample}/{sample}_consensus.fasta'
+    shell:
+        'java -jar GenomeAnalysisTK.jar -T FastaAlternateReferenceMaker '
+        '-R {input.reference} -o {output} -V {input.filtered_vcf}'
+
+rule gatk_coverage:
+    input:
+        bam_split = 'data/bam_files/{reference}/{sample}/{sample}_rg_dedupped_split.bam',
+        ref = 'data/reference/{reference}/{reference}.fasta'
+    output:
+        'data/coverage/{reference}/{sample}/{sample}'
+    shell:
+        'java -jar GenomeAnalysisTK.jar -T DepthOfCoverage -R {input.ref} '
+        '-o {output} -I {input.bam_split}'
+        
