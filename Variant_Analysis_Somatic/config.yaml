@@ -1,0 +1,12 @@
+###########################################################
+#### Config YAML #################
+###########################################################
+
+# Particular Barcodes for each sample
+samples:
+  normal_1:
+    barcode: 'ACAAGCTA'
+  tumor_1:
+    barcode: 'AACCGAGA'
+
+reference: 'GATK_hg38'
