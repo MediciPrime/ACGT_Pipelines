@@ -2,7 +2,7 @@ configfile:  "config.yaml"
 
 targets = []
 for reference in config['references']:
-    for sample in config['samples']:
+    for sample in config['references'][reference]['samples']:
         targets.extend(
             expand(
                 'data/consensus/{reference}/{sample}/{sample}_consensus.fasta',
@@ -54,7 +54,7 @@ rule star_index:
         'STAR --runThreadN {threads} --runMode genomeGenerate '
         '--genomeDir {input.ref_folder} --genomeFastaFiles {input.ref_fasta} '
         '--genomeSAindexNbases {params.saindex}'
-
+        
 rule star_align:
     input:
         genomeDir = 'data/reference/{reference}',
