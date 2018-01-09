@@ -4,21 +4,47 @@
 
 # Particular Barcodes for each sample
 samples:
-  B36:
-    barcode: 'CAGATC'
-  Cp3:
-    barcode: 'TGACCA'
-  C136:
-    barcode: 'CGATGT'
-  C17:
-    barcode: 'CTTGTA'
+  hhG4FP1:
+    barcode: 'GCCAATAT+AGATCTCG'
+  VHG1LP1:
+    barcode: 'ACAGTGAT+AGATCTCG'
+  VHG4FP1:
+    barcode: 'CAGATCAT+AGATCTCG'
 
 references:
-  covd_light:
-    saindex: '4.046379'
-  covd_heavy:
-    saindex: '4.450811'
-  vrc01_light:
-    saindex: '3.733803'
-  vrc01_heavy:
+  fragment_1:
+    saindex: '4.402872'
+    samples:
+      - 'hhG4FP1'
+      - 'VHG4FP1'
+  fragment_2:
+    saindex: '4.40649'
+    samples:
+      - 'VHG1LP1'
+  fragment_3:
+    saindex: '4.047699'
+    samples:
+      - 'hhG4FP1'
+      - 'VHG1LP1'
+      - 'VHG4FP1'
+  fragment_4:
+    saindex: '4.234821'
+    samples:
+      - 'VHG4FP1'
+  fragment_5:
     saindex: '4.239385'
+    samples:
+      - 'VHG1LP1'
+  fragment_6:
+    saindex: '3.759818'
+    samples:
+      - 'VHG1LP1'
+      - 'VHG4FP1'
+  fragment_9:
+    saindex: '3.747928'
+    samples:
+      - 'hhG4FP1'
+  fragment_10:
+    saindex: '4.230228'
+    samples:
+      - 'hhG4FP1'
